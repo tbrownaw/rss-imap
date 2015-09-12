@@ -2,8 +2,11 @@ import config
 
 import email
 from email.mime.text import MIMEText
+from html.parser import HTMLParser
+import email.utils as utils
 import imaplib
 import re
+from time import strftime
 
 import feedparser
 import yaml
@@ -21,15 +24,17 @@ def list_folders():
             if m:
                 yield m.group(3)
             else:
-                yield '!!!' + ("%s" % ent)
+                raise Error("Could not extract folder name from %s" % ent)
     typ, listing = M.list()
-    #print(typ, listing)
-    # There has got to be a better way to do this.
-    for x in extract_names(listing):
-        yield x
+    return extract_names(listing)
+
 
 def search(*args):
-    typ, listing = M.search(None, *args)
+    try:
+        typ, listing = M.search(None, *args)
+    except:
+        print("Invalid search args: ", args)
+        raise
     for lst in listing:
         dd = lst.decode('US-ASCII')
         for m in dd.split(' '):
@@ -46,9 +51,6 @@ if not any(f == 'RSS' for f in names):
     print('Creating toplevel RSS folder')
     M.create('RSS/')
 
-#for nn in names:
-#    print("Folder: " + nn)
-
 class FeedConfig:
     def __init__(self, dat):
         self.Folder = dat['Folder Name']
@@ -58,8 +60,9 @@ class FeedConfig:
     def quoted_folder(self):
         return '"RSS/%s"' % self.Folder
     def create_folder(self):
-        print('Creating folder for %s' % Folder)
+        print('Creating folder for %s' % self.Folder)
         M.create(self.quoted_folder())
+        M.subscribe(self.quoted_folder())
     def select_folder(self):
         M.select(self.quoted_folder())
 
@@ -83,21 +86,50 @@ def read_email_config():
                 yield fc
 
 feeds = list(read_email_config())
-print(feeds)
 
 # Ensure folders exist
 for feed in feeds:
     if not any(f == 'RSS/' + feed.Folder for f in names):
         feed.create_folder()
 
+# Cribbing things from StackOverflow is fun. :)
+def strip_html(dat):
+    class TagStripper(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.convert_charrefs = True
+            self.texts = []
+        def handle_data(self, t):
+            self.texts.append(t)
+        def result(self):
+            return ''.join(self.texts)
+    ts = TagStripper()
+    ts.feed(dat)
+    ts.close()
+    return ts.result()
+
 def rss_item_to_email(item):
     try:
-        text = item.link + "\r\n\r\n" + item.summary
+        text = '<p>Item Link: <a href="%s">%s</a></p><br>%s' % (item.link, item.link, item.summary)
         email = MIMEText(text, "html")
-        email['Subject'] = item.title
-        email['From'] = item.author
-        email['Message-Id'] = item.get('id', item.link)
-        email['Date'] = item.published if 'published' in item else item.updated if 'updated' in item else item.created
+        email['Subject'] = strip_html(item.title)
+        email['From'] = item.get('author', '(Author Not Provided)')
+        email['Message-Id'] = item.get('id', item.link).replace(' ', '_')
+        if 'published' in item:
+            date = item.published
+            date_parts = item.published_parsed
+        elif 'updated' in item:
+            date = item.updated
+            date_parts = item.updated_parsed
+        elif 'created' in item:
+            date = item.created
+            date_parts = item.created_parsed
+        if date_parts is None:
+            date_parts = utils.parsedate(strip_html(date))
+        # RSS feeds may contain parsable dates that aren't allowed in email.
+        if not (date_parts is None):
+            date = strftime("%A, %b %d %Y %H:%M:%S %Z", date_parts)
+        email['Date'] = strip_html(date)
         return email
     except:
         print("***ERROR while processing this item:\n", item)
@@ -105,8 +137,7 @@ def rss_item_to_email(item):
 
 for feed in feeds:
     content = feedparser.parse(feed.URL)
-    print(content.channel)
-    print(len(content.entries))
+    #print(content.channel)
     feed.select_folder()
     def emails_to_add():
         for item in content.entries:
@@ -115,8 +146,11 @@ for feed in feeds:
             if not any(existing):
                 yield email
     for email in emails_to_add():
-        print("%s\n" % email)
+        if email['Subject'] == '':
+            raise Error('Blank Subject')
+        if email['Date'] == '':
+            raise Error('Blank Date')
         typ, detail = M.append(feed.quoted_folder(), '', '', str(email).encode('utf-8'))
-        print("Append result: %s %s\n\n\n" % (typ, detail))
+        print('Append result for "%s": %s %s' % (email['Subject'], typ, detail))
 
 M.logout()
