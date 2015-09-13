@@ -11,45 +11,74 @@ from time import strftime
 import feedparser
 import yaml
 
-M = imaplib.IMAP4_SSL(config.hostname)
-M.login(config.username, config.password)
-
-
-
 list_matcher = re.compile('^\(([^()]*)\) "([^"]*)" "([^"]*)"$')
-def list_folders():
-    def extract_names(ll):
-        for ent in ll:
-            m = list_matcher.match(ent.decode('US-ASCII'))
-            if m:
-                yield m.group(3)
-            else:
-                raise Error("Could not extract folder name from %s" % ent)
-    typ, listing = M.list()
-    return extract_names(listing)
+class IMAPError(IOError):
+    pass
+class ImapWrapper:
+    def __init__(self, host, user, pw):
+        self.M = imaplib.IMAP4_SSL(host)
+        self.M.login(user, pw)
+        self._update_folders()
+    def logout(self):
+        self.M.logout()
+    def _update_folders(self):
+        def extract_names(ll):
+            for ent in ll:
+                m = list_matcher.match(ent.decode('US-ASCII'))
+                if m:
+                    yield m.group(3)
+                else:
+                    raise IMAPError("Could not extract folder name from %s" % ent)
+        typ, listing = self.M.list()
+        if typ != "OK":
+            raise IMAPError("Failed to list folders: %s" % listing)
+        self.folder_list = list(extract_names(listing))
+    def ensure_folder(self, name):
+        """Return True if the folder was created, False if it already existed."""
+        search_name = name[:-1] if name.endswith('/') else name
+        if not any(n == search_name for n in self.folder_list):
+            typ, dtl = self.M.create('"' + name + '"')
+            if typ != "OK":
+                raise IMAPError("Could not create folder: %s" % dtl)
+            self.folder_list.add(search_name)
+            return True
+        else:
+            return False    
+    # FIXME uses the context folder
+    def search(self, *args):
+        try:
+            typ, listing = self.M.search(None, *args)
+        except:
+            raise IMAPError('Search failed with args "%s"' % str(args))
+        for lst in listing:
+            dd = lst.decode('US-ASCII')
+            for m in dd.split(' '):
+                if m:
+                    yield m
+    # FIXME uses the context folder
+    def fetch(self, *args):
+        return self.M.fetch(*args)
+    def append(self, *args):
+        return self.M.append(*args)
+    def try_select_folder(self, name):
+        typ, dtl = self.M.select('"' + name + '"')
+        return typ == "OK"
+    def select_create_folder(self, name):
+        """Select the named folder, creating it if needed (and subscribing to it)."""
+        created = self.ensure_folder(name)
+        if created:
+            typ, dtl = self.M.subscribe('"' + name + '"')
+            if typ != "OK":
+                raise IMAPError("Could not subscribe to folder %s" % name)
+        if not self.try_select_folder(name):
+            raise IMAPError("Could not select folder %s" % name)
+
+W = ImapWrapper(config.hostname, config.username, config.password)
+
+W.ensure_folder('.config')
+W.ensure_folder('RSS/')
 
 
-def search(*args):
-    try:
-        typ, listing = M.search(None, *args)
-    except:
-        print("Invalid search args: ", args)
-        raise
-    for lst in listing:
-        dd = lst.decode('US-ASCII')
-        for m in dd.split(' '):
-            if m:
-                yield m
-
-
-names = list(list_folders())
-
-if not any(f == '.config' for f in names):
-    print('Creating .config folder')
-    M.create('.config')
-if not any(f == 'RSS' for f in names):
-    print('Creating toplevel RSS folder')
-    M.create('RSS/')
 
 class FeedConfig:
     def __init__(self, dat):
@@ -59,21 +88,16 @@ class FeedConfig:
         return ("{ Folder: %s; URL: %s }" % (self.Folder, self.URL))
     def quoted_folder(self):
         return '"RSS/%s"' % self.Folder
-    def create_folder(self):
-        print('Creating folder for %s' % self.Folder)
-        M.create(self.quoted_folder())
-        M.subscribe(self.quoted_folder())
-    def select_folder(self):
-        M.select(self.quoted_folder())
 
 def feed_configs_from_string(dat):
     for item in yaml.load_all(dat):
         yield FeedConfig(item)
 
 def read_email_config():
-    M.select('.config')
-    for num in search('SUBJECT', 'rss-imap', 'NOT', 'DELETED'):
-        typ, dat = M.fetch(num, '(RFC822)')
+    if not W.try_select_folder('.config'):
+        raise Exception("No .config folder available on IMAP server.")
+    for num in W.search('SUBJECT', 'rss-imap', 'NOT', 'DELETED'):
+        typ, dat = W.fetch(num, '(RFC822)')
         msg_str = dat[0][1].decode('UTF-8')
         msg = email.message_from_string(msg_str)
         if msg.is_multipart:
@@ -86,11 +110,6 @@ def read_email_config():
                 yield fc
 
 feeds = list(read_email_config())
-
-# Ensure folders exist
-for feed in feeds:
-    if not any(f == 'RSS/' + feed.Folder for f in names):
-        feed.create_folder()
 
 # Cribbing things from StackOverflow is fun. :)
 def strip_html(dat):
@@ -138,11 +157,11 @@ def rss_item_to_email(item):
 for feed in feeds:
     content = feedparser.parse(feed.URL)
     #print(content.channel)
-    feed.select_folder()
+    W.select_create_folder('RSS/' + feed.Folder)
     def emails_to_add():
         for item in content.entries:
             email = rss_item_to_email(item)
-            existing = search('HEADER', 'Message-Id', email['Message-Id'])
+            existing = W.search('HEADER', 'Message-Id', email['Message-Id'])
             if not any(existing):
                 yield email
     for email in emails_to_add():
@@ -150,7 +169,7 @@ for feed in feeds:
             raise Error('Blank Subject')
         if email['Date'] == '':
             raise Error('Blank Date')
-        typ, detail = M.append(feed.quoted_folder(), '', '', str(email).encode('utf-8'))
+        typ, detail = W.append(feed.quoted_folder(), '', '', str(email).encode('utf-8'))
         print('Append result for "%s": %s %s' % (email['Subject'], typ, detail))
 
-M.logout()
+W.logout()
