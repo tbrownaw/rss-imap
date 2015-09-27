@@ -96,7 +96,7 @@ def run_once():
     for feed in feeds:
         content = feedparser.parse(feed.URL)
         if content.bozo:
-            print("Feed %s had bozo set for '%s'" % (feed.Folder, content.bozo_exception))
+            print(" --> Feed %s had bozo set for '%s'" % (feed.Folder, content.bozo_exception))
         W.create_subscribe_folder('RSS/' + feed.Folder)
         def emails_to_add():
             for item in content.entries:
