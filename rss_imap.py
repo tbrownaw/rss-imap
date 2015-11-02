@@ -63,8 +63,9 @@ class ImapWrapper:
             for m in dd.split(' '):
                 if m:
                     yield m
-                    
+    
     def fetch_messages(self, folder, *search_args):
+        # Laziness might be bad here? Can't interleave with other operations.
         self.select_folder(folder)
         for num in self.search(*search_args):
             typ, dat = self.M.fetch(num, '(RFC822)')
@@ -187,15 +188,19 @@ class RssIMAP:
                 yield FeedConfig(item)
 
     def config_data_from_imap(self):
+        # Don't be lazy about this.
+        ret = []
         for msg in self._W.fetch_messages('.config', 'SUBJECT', 'rss-imap', 'NOT', 'DELETED'):
             if msg.is_multipart:
                 for part in filter(lambda p: 'Folders' in p.get_param('Name', '(none)'), msg.get_payload()):
-                    yield part.get_payload(None, True).decode('UTF-8')
+                    ret.append(part.get_payload(None, True).decode('UTF-8'))
             else:
-                yield msg.get_payload()
+                ret.append(msg.get_payload())
+        return ret
     
     def get_feed_config_from_imap(self):
-        return self.parse_configs(self.config_data_from_imap())
+        the_data = self.config_data_from_imap()
+        return self.parse_configs(the_data)
 
     def fetch_feed_items(self, feed):
         content = feedparser.parse(feed.URL)
