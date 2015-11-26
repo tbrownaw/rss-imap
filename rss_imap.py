@@ -15,7 +15,6 @@ import yaml
 
 
 
-
 class IMAPError(IOError):
     pass
 class ImapWrapper:
@@ -46,7 +45,7 @@ class ImapWrapper:
             typ, dtl = self.M.create('"' + name + '"')
             if typ != "OK":
                 raise IMAPError("Could not create folder: %s" % dtl)
-            self.folder_list.add(search_name)
+            self.folder_list.append(search_name)
             return True
         else:
             return False    
@@ -65,14 +64,15 @@ class ImapWrapper:
                     yield m
     
     def fetch_messages(self, folder, *search_args):
-        # Laziness might be bad here? Can't interleave with other operations.
+        ret = []
         self.select_folder(folder)
         for num in self.search(*search_args):
             typ, dat = self.M.fetch(num, '(RFC822)')
             if typ != "OK":
                 raise IMAPError('Could not fetch searched message: %s' % dat)
             msg = email.message_from_string(dat[0][1].decode('UTF-8'))
-            yield msg
+            ret.append(msg)
+        return ret
 
     def have_message_with_id(self, folder, msgid):
         self.select_folder(folder)
@@ -184,14 +184,14 @@ class RssIMAP:
 
     def parse_configs(self, configs):
         for dat in configs:
-            for item in yaml.load_all(dat):
+            for item in filter(lambda p: p != None, yaml.load_all(dat)):
                 yield FeedConfig(item)
 
     def config_data_from_imap(self):
         # Don't be lazy about this.
         ret = []
         for msg in self._W.fetch_messages('.config', 'SUBJECT', 'rss-imap', 'NOT', 'DELETED'):
-            if msg.is_multipart:
+            if msg.is_multipart():
                 for part in filter(lambda p: 'Folders' in p.get_param('Name', '(none)'), msg.get_payload()):
                     ret.append(part.get_payload(None, True).decode('UTF-8'))
             else:
