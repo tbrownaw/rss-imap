@@ -12,13 +12,16 @@ from time import strftime
 import feedparser
 import yaml
 
-
+import pprint
 
 
 class IMAPError(IOError):
     pass
 class ImapWrapper:
-    list_matcher = re.compile('^\(([^()]*)\) "([^"]*)" "([^"]*)"$')
+    # list of flags in parens
+    # quoted delimiter
+    # possible-quoted folder name
+    list_matcher = re.compile('^\(([^()]*)\) "([^"]*)" (([^" ]+)|"([^"]*)")$')
     def __init__(self, host, user, pw):
         self.M = imaplib.IMAP4_SSL(host)
         self.M.login(user, pw)
@@ -30,14 +33,19 @@ class ImapWrapper:
         def extract_names(ll):
             for ent in ll:
                 m = self.list_matcher.match(ent.decode('US-ASCII'))
+                #raise IMAPError("Got: <%s> <%s> <%s> <%s> <%s>" % (m.group(1), m.group(2), m.group(3), m.group(4), m.group(5)))
                 if m:
-                    yield m.group(3)
+                    if m.group(4) == None:
+                        yield m.group(5)
+                    else:
+                        yield m.group(4)
                 else:
                     raise IMAPError("Could not extract folder name from %s" % ent)
         typ, listing = self.M.list()
         if typ != "OK":
             raise IMAPError("Failed to list folders: %s" % listing)
         self.folder_list = list(extract_names(listing))
+        #pprint.pprint(self.folder_list)
     def ensure_folder(self, name):
         """Return True if the folder was created, False if it already existed."""
         search_name = name[:-1] if name.endswith('/') else name
@@ -72,6 +80,7 @@ class ImapWrapper:
                 raise IMAPError('Could not fetch searched message: %s' % dat)
             msg = email.message_from_string(dat[0][1].decode('UTF-8'))
             ret.append(msg)
+        ret.reverse()
         return ret
 
     def have_message_with_id(self, folder, msgid):
@@ -102,17 +111,6 @@ class ImapWrapper:
                 raise IMAPError("Could not subscribe to folder %s" % name)
 
 
-
-
-
-class FeedConfig:
-    def __init__(self, dat):
-        self.Folder = dat['Folder Name']
-        self.URL = dat['Feed URL']
-    def __repr__(self):
-        return ("{ Folder: %s; URL: %s }" % (self.Folder, self.URL))
-    def quoted_folder(self):
-        return '"RSS/%s"' % self.Folder
 
 
 
@@ -163,13 +161,22 @@ def rss_item_to_email(item):
         raise
 
 
-
 class FeedItem:
     def __init__(self, feed, rss_item):
         self.feed = feed
         self.rss_item = rss_item
         self.email = rss_item_to_email(rss_item)
         self.message_id = self.email['Message-Id']
+
+
+class FeedConfig:
+    def __init__(self, dat):
+        self.Folder = dat['Name']
+        self.URL = dat['URL']
+    def __repr__(self):
+        return ("{ Folder: %s; URL: %s }" % (self.Folder, self.URL))
+    def quoted_folder(self):
+        return '"RSS/%s"' % self.Folder
 
 
 
@@ -192,8 +199,14 @@ class RssIMAP:
         ret = []
         for msg in self._W.fetch_messages('.config', 'SUBJECT', 'rss-imap', 'NOT', 'DELETED'):
             if msg.is_multipart():
-                for part in filter(lambda p: 'Folders' in p.get_param('Name', '(none)'), msg.get_payload()):
-                    ret.append(part.get_payload(None, True).decode('UTF-8'))
+                #pprint.pprint(msg.get_content_type())
+                for part in msg.get_payload():
+                    #pprint.pprint(part.items())
+                    name = part.get_param('Name', '(none)')
+                    if 'Folders' in name:
+                        ret.append(part.get_payload(None, True).decode('UTF-8'))
+                    elif name == '(none)' and part.get_content_type() == 'text/plain':
+                        ret.append(part.get_payload(None, True).decode('UTF-8'))
             else:
                 ret.append(msg.get_payload())
         return ret

@@ -36,8 +36,8 @@ The feed configurations are a list of Yaml items, with two keys:
     Folder Name: "LWN.net"
     Feed URL: http://lwn.net/headlines/newrss
 
-*   "Folder Name" is the name of the subfolder under RSS/ that the feed items go in.
-*   "Feed URL" is what it says, the URL to fetch the RSS feed from.
+*   "Name" is the name of the subfolder under RSS/ that the feed items go in.
+*   "URL" is what it says, the URL to fetch the RSS feed from.
 
 Setup
 -----
