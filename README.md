@@ -30,11 +30,11 @@ messages, at least if they're plain text))
 
 The feed configurations are a list of Yaml items, with two keys:
 
-    Folder Name: "Lambda the Ultimate - Programming Languages Weblog"
-    Feed URL: http://lambda-the-ultimate.org/rss.xml
+    Name: "Lambda the Ultimate - Programming Languages Weblog"
+    URL: http://lambda-the-ultimate.org/rss.xml
     ---
-    Folder Name: "LWN.net"
-    Feed URL: http://lwn.net/headlines/newrss
+    Name: "LWN.net"
+    URL: http://lwn.net/headlines/newrss
 
 *   "Name" is the name of the subfolder under RSS/ that the feed items go in.
 *   "URL" is what it says, the URL to fetch the RSS feed from.
