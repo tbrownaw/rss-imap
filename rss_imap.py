@@ -171,12 +171,12 @@ class FeedItem:
 
 class FeedConfig:
     def __init__(self, dat):
-        self.Folder = dat['Name']
+        self.Name = dat['Name']
         self.URL = dat['URL']
     def __repr__(self):
-        return ("{ Folder: %s; URL: %s }" % (self.Folder, self.URL))
+        return ("{ Folder: %s; URL: %s }" % (self.Name, self.URL))
     def quoted_folder(self):
-        return '"RSS/%s"' % self.Folder
+        return config.feed_folder_template.format(name=self.Name)
 
 
 
@@ -218,7 +218,7 @@ class RssIMAP:
     def fetch_feed_items(self, feed):
         content = feedparser.parse(feed.URL)
         if content.bozo:
-            sys.stderr.write(" --> Feed %s had bozo set for '%s'\n" % (feed.Folder, content.bozo_exception))
+            sys.stderr.write(" --> Feed %s had bozo set for '%s'\n" % (feed.Name, content.bozo_exception))
         for item in content.entries:
             yield FeedItem(feed, item)
 
@@ -229,14 +229,14 @@ class RssIMAP:
 
     def filter_items(self, items):
         for item in items:
-            self._W.create_subscribe_folder('RSS/' + item.feed.Folder)
-            if not self._W.have_message_with_id('RSS/' + item.feed.Folder, item.message_id):
+            self._W.create_subscribe_folder(item.feed.quoted_folder())
+            if not self._W.have_message_with_id(item.feed.quoted_folder(), item.message_id):
                 yield item
 
     def save_items_to_imap(self, items):
         for item in items:
-            sys.stdout.write('New item "%s" for feed "%s"\n' % (item.email['Subject'], item.feed.Folder))
-            self._W.append('RSS/' + item.feed.Folder, item.email)
+            sys.stdout.write('New item "%s" for feed "%s"\n' % (item.email['Subject'], item.feed.Name))
+            self._W.append(item.feed.quoted_folder(), item.email)
 
     def disconnect(self):
         self._W.logout()
