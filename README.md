@@ -18,6 +18,17 @@ The default config.py expects 3 environment variables:
 There isn't (currently) a way to specify a non-SSL connection, or to
 specify a non-standard port.
 
+It also accept one optional environment variable:
+
+*   FEED_FOLDER_TEMPLATE -- The target IMAP folder for feed items
+
+If this contains "{name}", that will be replaced with the "Name" item from the
+feed definition (below). The default value is "RSS-combined".
+
+Note that IMAP doesn't do well when trying to monitor large numbers of folders
+for updates.
+
+
 Feed Definitions
 ----------------
 
@@ -36,7 +47,7 @@ The feed configurations are a list of Yaml items, with two keys:
     Name: "LWN.net"
     URL: http://lwn.net/headlines/newrss
 
-*   "Name" is the name of the subfolder under RSS/ that the feed items go in.
+*   "Name" may be used to determine the target IMAP folder.
 *   "URL" is what it says, the URL to fetch the RSS feed from.
 
 Setup
@@ -46,6 +57,5 @@ This assumes Python3, and uses PyYaml and Universal Feed Parser.
 
     virtualenv -p $(which python3) $DIR
     . $DIR/bin/activate
-    pip3 install feedparser
-    pip3 install pyyaml
+    pip3 install -r requirements.txt
     # Edit config.py or set IMAP_HOST, IMAP_USER, and IMAP_PASS
