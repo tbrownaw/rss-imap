@@ -17,6 +17,8 @@ import pprint
 
 class IMAPError(IOError):
     pass
+class FilterError(IOError):
+    pass
 class ImapWrapper:
     # list of flags in parens
     # quoted delimiter
@@ -56,7 +58,7 @@ class ImapWrapper:
             self.folder_list.append(search_name)
             return True
         else:
-            return False    
+            return False
     # FIXME uses the context folder
     def search(self, *args):
         try:
@@ -70,7 +72,7 @@ class ImapWrapper:
             for m in dd.split(' '):
                 if m:
                     yield m
-    
+
     def fetch_messages(self, folder, *search_args):
         ret = []
         self.select_folder(folder)
@@ -88,12 +90,12 @@ class ImapWrapper:
         res = list(self.search('HEADER', 'Message-Id', msgid, 'NOT', 'DELETED'))
         #sys.stderr.write('>>> Looking in folder "%s" for message-id "%s": got "%s"\n' % (folder, msgid, res))
         return any(res)
-    
+
     def append(self, folder_name, email):
         typ, detail = self.M.append('"' + folder_name + '"', '', '', str(email).encode('utf-8'))
         if typ != 'OK':
             raise IMAPError('Could not add item: %s' % detail)
-        
+
     # FIXME sets the context folder
     def select_folder(self, name):
         if self._selected_folder == name:
@@ -102,7 +104,7 @@ class ImapWrapper:
         if typ != "OK":
             raise IMAPError('Could not select folder "%s": %s' % (name, dtl))
         self._selected_folder = name
-        
+
     def create_subscribe_folder(self, name):
         created = self.ensure_folder(name)
         if created:
@@ -115,10 +117,15 @@ class ImapWrapper:
 
 
 
-def item_message_id(item):
-    return item.get('id', item.link).replace(' ', '_')
+def item_message_id(feed, item):
+    msgid = item.get('id', item.link)
+    if not msgid:
+        msgid = feed.Name + " / " + item.title + " AT " + item.get('date', 'No date')
+    msgid = msgid.replace(' ', '_')
+    msgid = re.sub('[^\x00-\x7f]', '_', msgid)
+    return msgid
 
-def rss_item_to_email(item):
+def rss_item_to_email(item, feed):
 # Cribbing things from StackOverflow is fun. :)
     def strip_html(dat):
         class TagStripper(HTMLParser):
@@ -137,9 +144,9 @@ def rss_item_to_email(item):
     try:
         text = '<p>Item Link: <a href="%s">%s</a></p><br>%s' % (item.link, item.link, item.summary)
         email = MIMEText(text, "html")
-        email['Subject'] = strip_html(item.title)
+        email['Subject'] = config.subject_template.format(name=feed.Name, subject=strip_html(item.title))
         email['From'] = item.get('author', '(Author Not Provided)')
-        email['Message-Id'] = item_message_id(item)
+        email['Message-Id'] = item_message_id(feed, item)
         if 'published' in item:
             date = item.published
             date_parts = item.published_parsed
@@ -165,7 +172,7 @@ class FeedItem:
     def __init__(self, feed, rss_item):
         self.feed = feed
         self.rss_item = rss_item
-        self.email = rss_item_to_email(rss_item)
+        self.email = rss_item_to_email(rss_item, feed)
         self.message_id = self.email['Message-Id']
 
 
@@ -183,16 +190,37 @@ class FeedConfig:
 class RssIMAP:
     def __init__(self):
         pass
-    
+
     def connect_imap(self, hostname, username, password):
         self._W = ImapWrapper(hostname, username, password)
         self._W.ensure_folder('.config')
-        self._W.ensure_folder('RSS/')
 
     def parse_configs(self, configs):
+        feed_configs = []
+        app_config = None
         for dat in configs:
+            #pprint.pprint(dat)
             for item in filter(lambda p: p != None, yaml.load_all(dat)):
-                yield FeedConfig(item)
+                if 'Configuration' in item:
+                    #pprint.pprint(item)
+                    app_config = item['Configuration']
+                else:
+                    feed_configs.append(FeedConfig(item))
+        # Figure out a better place to put this...
+        def approx_item(dict, key):
+            #print("Looking for key '" + key + "' in:")
+            #pprint.pprint(dict.keys())
+            m = list(filter(lambda k: re.search('( |^)' + key + '$', k), dict.keys()))
+            if m:
+                #print("*** " + m[0] + " = " + dict[m[0]])
+                return dict[m[0]]
+            return None
+        if app_config:
+            #print("*** Reading app config...")
+            config.feed_folder_template = approx_item(app_config, 'FolderTemplate') or config.feed_folder_template #app_config['FolderTemplate']
+            config.subject_template = approx_item(app_config, 'SubjectTemplate') or config.subject_template #app_config['SubjectTemplate']
+        #pprint.pprint(feed_configs)
+        return feed_configs
 
     def config_data_from_imap(self):
         # Don't be lazy about this.
@@ -210,7 +238,7 @@ class RssIMAP:
             else:
                 ret.append(msg.get_payload())
         return ret
-    
+
     def get_feed_config_from_imap(self):
         the_data = self.config_data_from_imap()
         return self.parse_configs(the_data)
@@ -230,12 +258,15 @@ class RssIMAP:
     def filter_items(self, items):
         for item in items:
             self._W.create_subscribe_folder(item.feed.quoted_folder())
-            if not self._W.have_message_with_id(item.feed.quoted_folder(), item.message_id):
-                yield item
+            try:
+                if not self._W.have_message_with_id(item.feed.quoted_folder(), item.message_id):
+                    yield item
+            except:
+                raise FilterError("Could not check for presence of item with subject %s from feed %s" % (item.email['Subject'], item.feed.Name))
 
     def save_items_to_imap(self, items):
         for item in items:
-            sys.stdout.write('New item "%s" for feed "%s"\n' % (item.email['Subject'], item.feed.Name))
+            sys.stdout.write('New item "%s" for feed "%s", with message_id "%s"\n' % (item.email['Subject'], item.feed.Name, item.message_id))
             self._W.append(item.feed.quoted_folder(), item.email)
 
     def disconnect(self):
