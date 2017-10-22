@@ -142,7 +142,9 @@ def rss_item_to_email(item, feed):
         ts.close()
         return ts.result()
     try:
-        text = '<p>Item Link: <a href="%s">%s</a></p><br>%s' % (item.link, item.link, item.summary)
+        text = '<p>Item Link: <a href="%s">%s</a></p>' % (item.link, item.link)
+        if 'summary' in item:
+            text = text + "<br>" + item.summary
         email = MIMEText(text, "html")
         email['Subject'] = config.subject_template.format(name=feed.Name, subject=strip_html(item.title))
         email['From'] = item.get('author', '(Author Not Provided)')
