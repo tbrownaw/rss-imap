@@ -8,6 +8,7 @@ import email.utils as utils
 import re
 import sys
 from time import strftime
+import socket
 
 import feedparser
 import yaml
@@ -246,7 +247,9 @@ class RssIMAP:
         return self.parse_configs(the_data)
 
     def fetch_feed_items(self, feed):
+        sys.stdout.write("Fetching feed %s\n" % (feed.URL))
         content = feedparser.parse(feed.URL)
+        sys.stdout.write("Done fetching feed %s\n" % (feed.URL))
         if content.bozo:
             sys.stderr.write(" --> Feed %s had bozo set for '%s'\n" % (feed.Name, content.bozo_exception))
         for item in content.entries:
@@ -276,6 +279,7 @@ class RssIMAP:
 
 
 if __name__ == '__main__':
+    socket.setdefaulttimeout(10)
     x = RssIMAP()
     x.connect_imap(config.hostname, config.username, config.password)
     x.save_items_to_imap(x.filter_items(x.fetch_all_feed_items()))
