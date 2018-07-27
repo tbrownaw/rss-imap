@@ -1,5 +1,6 @@
 import config
 
+import datetime
 import email
 from email.mime.text import MIMEText
 from html.parser import HTMLParser
@@ -24,7 +25,7 @@ class ImapWrapper:
     # list of flags in parens
     # quoted delimiter
     # possible-quoted folder name
-    list_matcher = re.compile('^\(([^()]*)\) "([^"]*)" (([^" ]+)|"([^"]*)")$')
+    list_matcher = re.compile(r'^\(([^()]*)\) "([^"]*)" (([^" ]+)|"([^"]*)")$')
     def __init__(self, host, user, pw):
         self.M = imaplib.IMAP4_SSL(host)
         self.M.login(user, pw)
@@ -159,6 +160,9 @@ def rss_item_to_email(item, feed):
         elif 'created' in item:
             date = item.created
             date_parts = item.created_parsed
+        else:
+            date = None
+            date_parts = datetime.datetime.now().timetuple()
         if date_parts is None:
             date_parts = utils.parsedate(strip_html(date))
         # RSS feeds may contain parsable dates that aren't allowed in email.
