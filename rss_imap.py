@@ -207,7 +207,7 @@ class RssIMAP:
         app_config = None
         for dat in configs:
             #pprint.pprint(dat)
-            for item in filter(lambda p: p != None, yaml.load_all(dat)):
+            for item in filter(lambda p: p != None, yaml.safe_load_all(dat)):
                 if 'Configuration' in item:
                     #pprint.pprint(item)
                     app_config = item['Configuration']
