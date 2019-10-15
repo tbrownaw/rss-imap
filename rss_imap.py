@@ -95,6 +95,41 @@ class FeedConfig:
         return config.feed_folder_template.format(name=self.Name)
 
 
+def fetch_feed_items(feed):
+    sys.stdout.write("Fetching feed %s\n" % (feed.URL))
+    content = feedparser.parse(feed.URL)
+    sys.stdout.write("Done fetching feed %s\n" % (feed.URL))
+    if content.bozo:
+        sys.stderr.write(" --> Feed %s had bozo set for '%s'\n" % (feed.Name, content.bozo_exception))
+    for item in content.entries:
+        yield FeedItem(feed, item)
+
+def parse_configs(configs):
+    feed_configs = []
+    app_config = None
+    for dat in configs:
+        #pprint.pprint(dat)
+        for item in filter(lambda p: p != None, yaml.safe_load_all(dat)):
+            if 'Configuration' in item:
+                #pprint.pprint(item)
+                app_config = item['Configuration']
+            else:
+                feed_configs.append(FeedConfig(item))
+    # Figure out a better place to put this...
+    def approx_item(dict, key):
+        #print("Looking for key '" + key + "' in:")
+        #pprint.pprint(dict.keys())
+        m = list(filter(lambda k: re.search('( |^)' + key + '$', k), dict.keys()))
+        if m:
+            #print("*** " + m[0] + " = " + dict[m[0]])
+            return dict[m[0]]
+        return None
+    if app_config:
+        #print("*** Reading app config...")
+        config.feed_folder_template = approx_item(app_config, 'FolderTemplate') or config.feed_folder_template #app_config['FolderTemplate']
+        config.subject_template = approx_item(app_config, 'SubjectTemplate') or config.subject_template #app_config['SubjectTemplate']
+    #pprint.pprint(feed_configs)
+    return feed_configs
 
 class RssIMAP:
     def __init__(self):
@@ -103,33 +138,6 @@ class RssIMAP:
     def connect_imap(self, hostname, username, password):
         self._W = ImapWrapper(hostname, username, password)
         self._W.ensure_folder('.config')
-
-    def parse_configs(self, configs):
-        feed_configs = []
-        app_config = None
-        for dat in configs:
-            #pprint.pprint(dat)
-            for item in filter(lambda p: p != None, yaml.safe_load_all(dat)):
-                if 'Configuration' in item:
-                    #pprint.pprint(item)
-                    app_config = item['Configuration']
-                else:
-                    feed_configs.append(FeedConfig(item))
-        # Figure out a better place to put this...
-        def approx_item(dict, key):
-            #print("Looking for key '" + key + "' in:")
-            #pprint.pprint(dict.keys())
-            m = list(filter(lambda k: re.search('( |^)' + key + '$', k), dict.keys()))
-            if m:
-                #print("*** " + m[0] + " = " + dict[m[0]])
-                return dict[m[0]]
-            return None
-        if app_config:
-            #print("*** Reading app config...")
-            config.feed_folder_template = approx_item(app_config, 'FolderTemplate') or config.feed_folder_template #app_config['FolderTemplate']
-            config.subject_template = approx_item(app_config, 'SubjectTemplate') or config.subject_template #app_config['SubjectTemplate']
-        #pprint.pprint(feed_configs)
-        return feed_configs
 
     def config_data_from_imap(self):
         # Don't be lazy about this.
@@ -150,35 +158,27 @@ class RssIMAP:
 
     def get_feed_config_from_imap(self):
         the_data = self.config_data_from_imap()
-        return self.parse_configs(the_data)
+        return parse_configs(the_data)
 
-    def fetch_feed_items(self, feed):
-        sys.stdout.write("Fetching feed %s\n" % (feed.URL))
-        content = feedparser.parse(feed.URL)
-        sys.stdout.write("Done fetching feed %s\n" % (feed.URL))
-        if content.bozo:
-            sys.stderr.write(" --> Feed %s had bozo set for '%s'\n" % (feed.Name, content.bozo_exception))
-        for item in content.entries:
-            yield FeedItem(feed, item)
-
-    def fetch_all_feed_items(self):
-        for feed in self.get_feed_config_from_imap():
-            for item in self.fetch_feed_items(feed):
-                yield item
+    def want_item(self, item):
+        self._W.create_subscribe_folder(item.feed.quoted_folder())
+        try:
+            return not self._W.have_message_with_id(item.feed.quoted_folder(), item.message_id)
+        except:
+            raise FilterError("Could not check for presence of item with subject %s from feed %s" % (item.email['Subject'], item.feed.Name))
 
     def filter_items(self, items):
         for item in items:
-            self._W.create_subscribe_folder(item.feed.quoted_folder())
-            try:
-                if not self._W.have_message_with_id(item.feed.quoted_folder(), item.message_id):
-                    yield item
-            except:
-                raise FilterError("Could not check for presence of item with subject %s from feed %s" % (item.email['Subject'], item.feed.Name))
+            if self.want_item(item):
+                yield item
+
+    def save_item_to_imap(self, item):
+        sys.stdout.write('New item "%s" for feed "%s", with message_id "%s"\n' % (item.email['Subject'], item.feed.Name, item.message_id))
+        self._W.append(item.feed.quoted_folder(), item.email)
 
     def save_items_to_imap(self, items):
         for item in items:
-            sys.stdout.write('New item "%s" for feed "%s", with message_id "%s"\n' % (item.email['Subject'], item.feed.Name, item.message_id))
-            self._W.append(item.feed.quoted_folder(), item.email)
+            self.save_item_to_imap(item)
 
     def disconnect(self):
         self._W.logout()
@@ -188,5 +188,8 @@ if __name__ == '__main__':
     socket.setdefaulttimeout(10)
     x = RssIMAP()
     x.connect_imap(config.hostname, config.username, config.password)
-    x.save_items_to_imap(x.filter_items(x.fetch_all_feed_items()))
+    feeds = x.get_feed_config_from_imap()
+    for feed in feeds:
+        items = list(fetch_feed_items(feed))
+        x.save_items_to_imap(x.filter_items(items))
     x.disconnect()
