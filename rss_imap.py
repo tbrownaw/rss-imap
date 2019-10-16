@@ -101,7 +101,7 @@ def fetch_feed_items(feed):
     content = feedparser.parse(feed.URL)
     l.info("Done fetching feed %s", feed.URL)
     if content.bozo:
-        l.warning(" --> Feed %s had bozo set for '%s'", feed.Name, content.bozo_exception)
+        l.warning("Feed %s had bozo set for '%s'", feed.URL, content.bozo_exception)
     for item in content.entries:
         yield FeedItem(feed, item)
 
