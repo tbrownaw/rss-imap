@@ -4,6 +4,7 @@ import datetime
 from email.mime.text import MIMEText
 from html.parser import HTMLParser
 import email.utils as utils
+import logging
 import re
 import sys
 from time import strftime
@@ -14,12 +15,12 @@ import yaml
 
 from imap_wrapper import ImapWrapper
 
-import pprint
-
-
 class FilterError(IOError):
     pass
 
+class TranslationException(Exception):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
 def item_message_id(feed, item):
     msgid = item.get('id', item.link)
@@ -30,7 +31,7 @@ def item_message_id(feed, item):
     return msgid
 
 def rss_item_to_email(item, feed):
-# Cribbing things from StackOverflow is fun. :)
+    # Cribbing things from StackOverflow is fun. :)
     def strip_html(dat):
         class TagStripper(HTMLParser):
             def __init__(self):
@@ -72,9 +73,8 @@ def rss_item_to_email(item, feed):
             date = strftime("%A, %b %d %Y %H:%M:%S %Z", date_parts)
         email['Date'] = strip_html(date)
         return email
-    except:
-        print("***ERROR while processing this item:\n", item)
-        raise
+    except Exception as e:
+        raise TranslationException(item) from e
 
 
 class FeedItem:
@@ -96,39 +96,36 @@ class FeedConfig:
 
 
 def fetch_feed_items(feed):
-    sys.stdout.write("Fetching feed %s\n" % (feed.URL))
+    l = logging.getLogger(__name__)
+    l.info("Fetching feed %s", feed.URL)
     content = feedparser.parse(feed.URL)
-    sys.stdout.write("Done fetching feed %s\n" % (feed.URL))
+    l.info("Done fetching feed %s", feed.URL)
     if content.bozo:
-        sys.stderr.write(" --> Feed %s had bozo set for '%s'\n" % (feed.Name, content.bozo_exception))
+        l.warning(" --> Feed %s had bozo set for '%s'", feed.Name, content.bozo_exception)
     for item in content.entries:
         yield FeedItem(feed, item)
 
 def parse_configs(configs):
+    l = logging.getLogger(__name__)
     feed_configs = []
     app_config = None
     for dat in configs:
-        #pprint.pprint(dat)
+        l.debug("Config data: %s", dat)
         for item in filter(lambda p: p != None, yaml.safe_load_all(dat)):
             if 'Configuration' in item:
-                #pprint.pprint(item)
+                l.debug("Config item: %s", dat)
                 app_config = item['Configuration']
             else:
                 feed_configs.append(FeedConfig(item))
     # Figure out a better place to put this...
     def approx_item(dict, key):
-        #print("Looking for key '" + key + "' in:")
-        #pprint.pprint(dict.keys())
         m = list(filter(lambda k: re.search('( |^)' + key + '$', k), dict.keys()))
         if m:
-            #print("*** " + m[0] + " = " + dict[m[0]])
             return dict[m[0]]
         return None
     if app_config:
-        #print("*** Reading app config...")
         config.feed_folder_template = approx_item(app_config, 'FolderTemplate') or config.feed_folder_template #app_config['FolderTemplate']
         config.subject_template = approx_item(app_config, 'SubjectTemplate') or config.subject_template #app_config['SubjectTemplate']
-    #pprint.pprint(feed_configs)
     return feed_configs
 
 class RssIMAP:
@@ -144,9 +141,7 @@ class RssIMAP:
         ret = []
         for msg in self._W.fetch_messages('.config', 'SUBJECT', 'rss-imap', 'NOT', 'DELETED'):
             if msg.is_multipart():
-                #pprint.pprint(msg.get_content_type())
                 for part in msg.get_payload():
-                    #pprint.pprint(part.items())
                     name = part.get_param('Name', '(none)')
                     if 'Folders' in name:
                         ret.append(part.get_payload(None, True).decode('UTF-8'))
@@ -173,7 +168,8 @@ class RssIMAP:
                 yield item
 
     def save_item_to_imap(self, item):
-        sys.stdout.write('New item "%s" for feed "%s", with message_id "%s"\n' % (item.email['Subject'], item.feed.Name, item.message_id))
+        l = logging.getLogger(__name__)
+        l.info('New item "%s" for feed "%s", with message_id "%s"', item.email['Subject'], item.feed.Name, item.message_id)
         self._W.append(item.feed.quoted_folder(), item.email)
 
     def save_items_to_imap(self, items):
@@ -185,11 +181,16 @@ class RssIMAP:
 
 
 if __name__ == '__main__':
+    config.configure_logging()
+    # The default is to just hang forever if one of
+    # the RSS feed servers isn't responding.
     socket.setdefaulttimeout(10)
+    l = logging.getLogger(__name__)
     x = RssIMAP()
     x.connect_imap(config.hostname, config.username, config.password)
     feeds = x.get_feed_config_from_imap()
     for feed in feeds:
         items = list(fetch_feed_items(feed))
         x.save_items_to_imap(x.filter_items(items))
+        l.info("Done checking %d items from feed %s", len(items), feed.URL)
     x.disconnect()

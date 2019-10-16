@@ -6,6 +6,10 @@ class IMAPError(IOError):
     pass
 
 class ImapWrapper:
+    """A wrapper around imaplib, since that's a bit
+    lower-level than I'd prefer to work with."""
+
+    #This regex is:
     # list of flags in parens
     # quoted delimiter
     # possible-quoted folder name
@@ -21,7 +25,6 @@ class ImapWrapper:
         def extract_names(ll):
             for ent in ll:
                 m = self.list_matcher.match(ent.decode('US-ASCII'))
-                #raise IMAPError("Got: <%s> <%s> <%s> <%s> <%s>" % (m.group(1), m.group(2), m.group(3), m.group(4), m.group(5)))
                 if m:
                     if m.group(4) == None:
                         yield m.group(5)
@@ -33,7 +36,6 @@ class ImapWrapper:
         if typ != "OK":
             raise IMAPError("Failed to list folders: %s" % listing)
         self.folder_list = list(extract_names(listing))
-        #pprint.pprint(self.folder_list)
     def ensure_folder(self, name):
         """Return True if the folder was created, False if it already existed."""
         search_name = name[:-1] if name.endswith('/') else name
@@ -74,7 +76,6 @@ class ImapWrapper:
     def have_message_with_id(self, folder, msgid):
         self.select_folder(folder)
         res = list(self.search('HEADER', 'Message-Id', msgid, 'NOT', 'DELETED'))
-        #sys.stderr.write('>>> Looking in folder "%s" for message-id "%s": got "%s"\n' % (folder, msgid, res))
         return any(res)
 
     def append(self, folder_name, email):
