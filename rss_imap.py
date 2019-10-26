@@ -157,13 +157,6 @@ class RssIMAP:
         the_data = self.config_data_from_imap()
         return parse_configs(the_data)
 
-    def want_item(self, item):
-        self._W.create_subscribe_folder(item.feed.quoted_folder())
-        try:
-            return not self._W.have_message_with_id(item.feed.quoted_folder(), item.message_id)
-        except:
-            raise FilterError("Could not check for presence of item with subject %s from feed %s" % (item.email['Subject'], item.feed.Name))
-
     def filter_items(self, folder, items):
         have_ids = self._W.check_folder_for_message_ids(folder, [item.message_id for item in items])
         want_items = []
@@ -190,7 +183,6 @@ if __name__ == '__main__':
     # The default is to just hang forever if one of
     # the RSS feed servers isn't responding.
     socket.setdefaulttimeout(10)
-    ll = logging.getLogger(__name__)
     x = RssIMAP()
     x.connect_imap(config.hostname, config.username, config.password)
     feeds = x.get_feed_config_from_imap()
