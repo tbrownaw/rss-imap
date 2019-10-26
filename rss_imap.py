@@ -5,8 +5,10 @@ from email.mime.text import MIMEText
 from html.parser import HTMLParser
 import email.utils as utils
 import logging
+import queue
 import re
 import sys
+import threading
 from time import strftime
 import socket
 
@@ -155,17 +157,13 @@ class RssIMAP:
         the_data = self.config_data_from_imap()
         return parse_configs(the_data)
 
-    def want_item(self, item):
-        self._W.create_subscribe_folder(item.feed.quoted_folder())
-        try:
-            return not self._W.have_message_with_id(item.feed.quoted_folder(), item.message_id)
-        except:
-            raise FilterError("Could not check for presence of item with subject %s from feed %s" % (item.email['Subject'], item.feed.Name))
-
-    def filter_items(self, items):
+    def filter_items(self, folder, items):
+        have_ids = self._W.check_folder_for_message_ids(folder, [item.message_id for item in items])
+        want_items = []
         for item in items:
-            if self.want_item(item):
-                yield item
+            if not (item.message_id.encode('utf-8') in have_ids):
+                want_items.append(item)
+        return want_items
 
     def save_item_to_imap(self, item):
         l = logging.getLogger(__name__)
@@ -185,12 +183,41 @@ if __name__ == '__main__':
     # The default is to just hang forever if one of
     # the RSS feed servers isn't responding.
     socket.setdefaulttimeout(10)
-    l = logging.getLogger(__name__)
     x = RssIMAP()
     x.connect_imap(config.hostname, config.username, config.password)
     feeds = x.get_feed_config_from_imap()
-    for feed in feeds:
+    todo = queue.Queue()
+    producer_threads = []
+    def producer(feed):
+        l = logging.getLogger(__name__)
         items = list(fetch_feed_items(feed))
-        x.save_items_to_imap(x.filter_items(items))
-        l.info("Done checking %d items from feed %s", len(items), feed.URL)
+        if len(items) > 0:
+            todo.put((feed, items))
+    def consumer():
+        l = logging.getLogger(__name__)
+        while True:
+            (feed, items) = todo.get()
+            if items == None:
+                break
+            l.info("Filtering %d items from feed %s", len(items), feed.URL)
+            filtered = x.filter_items(feed.quoted_folder(), items)
+            l.info("Done filtering feed %s", feed.URL)
+            if len(items) == 0:
+                continue
+            x.save_items_to_imap(filtered)
+            l.info("Done saving %d new items from feed %s", len(filtered), feed.URL)
+
+
+    consumer_thread = threading.Thread(target=consumer, name="Consumer")
+    consumer_thread.start()
+
+    for feed in feeds:
+        thread = threading.Thread(target=producer, name=f"Fetch {feed.URL}", args=(feed,))
+        thread.start()
+        producer_threads.append(thread)
+    for producer in producer_threads:
+        producer.join()
+    todo.put((None, None))
+    consumer_thread.join()
+
     x.disconnect()

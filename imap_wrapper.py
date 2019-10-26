@@ -53,11 +53,21 @@ class ImapWrapper:
             ret.append(msg)
 
         return ret
-
-    def have_message_with_id(self, folder, msgid):
+    
+    def check_folder_for_message_ids(self, folder, msgids):
         self.select_folder(folder)
-        res = self.M.search(['HEADER', 'Message-Id', msgid, 'NOT', 'DELETED'])
-        return any(res)
+        search_ids = []
+        for msgid in msgids:
+            if len(search_ids) > 0:
+                search_ids.insert(0, 'OR')
+            search_ids.append(['HEADER', 'Message-Id', msgid])
+        message_numbers = self.M.search(['NOT', 'DELETED', search_ids])
+        message_envelopes = self.M.fetch(message_numbers, 'ENVELOPE')
+        have_ids = []
+        for msgdata in message_envelopes.values():
+            envelope = msgdata[b'ENVELOPE']
+            have_ids.append(envelope.message_id)
+        return have_ids
 
     def append(self, folder_name, email):
         response = self.M.append(folder_name, str(email).encode('utf-8'))
