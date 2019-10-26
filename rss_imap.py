@@ -5,8 +5,10 @@ from email.mime.text import MIMEText
 from html.parser import HTMLParser
 import email.utils as utils
 import logging
+import queue
 import re
 import sys
+import threading
 from time import strftime
 import socket
 
@@ -188,18 +190,42 @@ if __name__ == '__main__':
     # The default is to just hang forever if one of
     # the RSS feed servers isn't responding.
     socket.setdefaulttimeout(10)
-    l = logging.getLogger(__name__)
+    ll = logging.getLogger(__name__)
     x = RssIMAP()
     x.connect_imap(config.hostname, config.username, config.password)
     feeds = x.get_feed_config_from_imap()
-    for feed in feeds:
+    todo = queue.Queue()
+    producer_threads = []
+    def producer(feed):
+        l = logging.getLogger(__name__)
         items = list(fetch_feed_items(feed))
-        if len(items) == 0:
-            continue
-        filtered = x.filter_items(feed.quoted_folder(), items)
-        l.info("Done filtering %d items from feed %s", len(items), feed.URL)
-        if len(items) == 0:
-            continue
-        x.save_items_to_imap(filtered)
-        l.info("Done saving %d new items from feed %s", len(filtered), feed.URL)
+        if len(items) > 0:
+            todo.put((feed, items))
+    def consumer():
+        l = logging.getLogger(__name__)
+        while True:
+            (feed, items) = todo.get()
+            if items == None:
+                break
+            l.info("Filtering %d items from feed %s", len(items), feed.URL)
+            filtered = x.filter_items(feed.quoted_folder(), items)
+            l.info("Done filtering feed %s", feed.URL)
+            if len(items) == 0:
+                continue
+            x.save_items_to_imap(filtered)
+            l.info("Done saving %d new items from feed %s", len(filtered), feed.URL)
+
+
+    consumer_thread = threading.Thread(target=consumer, name="Consumer")
+    consumer_thread.start()
+
+    for feed in feeds:
+        thread = threading.Thread(target=producer, name=f"Fetch {feed.URL}", args=(feed,))
+        thread.start()
+        producer_threads.append(thread)
+    for producer in producer_threads:
+        producer.join()
+    todo.put((None, None))
+    consumer_thread.join()
+
     x.disconnect()
