@@ -162,10 +162,13 @@ class RssIMAP:
         except:
             raise FilterError("Could not check for presence of item with subject %s from feed %s" % (item.email['Subject'], item.feed.Name))
 
-    def filter_items(self, items):
+    def filter_items(self, folder, items):
+        have_ids = self._W.check_folder_for_message_ids(folder, [item.message_id for item in items])
+        want_items = []
         for item in items:
-            if self.want_item(item):
-                yield item
+            if not (item.message_id.encode('utf-8') in have_ids):
+                want_items.append(item)
+        return want_items
 
     def save_item_to_imap(self, item):
         l = logging.getLogger(__name__)
@@ -191,6 +194,12 @@ if __name__ == '__main__':
     feeds = x.get_feed_config_from_imap()
     for feed in feeds:
         items = list(fetch_feed_items(feed))
-        x.save_items_to_imap(x.filter_items(items))
-        l.info("Done checking %d items from feed %s", len(items), feed.URL)
+        if len(items) == 0:
+            continue
+        filtered = x.filter_items(feed.quoted_folder(), items)
+        l.info("Done filtering %d items from feed %s", len(items), feed.URL)
+        if len(items) == 0:
+            continue
+        x.save_items_to_imap(filtered)
+        l.info("Done saving %d new items from feed %s", len(filtered), feed.URL)
     x.disconnect()
