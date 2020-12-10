@@ -158,7 +158,18 @@ class RssIMAP:
         return parse_configs(the_data)
 
     def filter_items(self, folder, items):
-        have_ids = self._W.check_folder_for_message_ids(folder, [item.message_id for item in items])
+        """Filter a list of items to only those that do not exist on the server."""
+        try:
+            have_ids = self._W.check_folder_for_message_ids(folder, [item.message_id for item in items])
+        except:
+            l = logging.getLogger(__name__)
+            l.exception("Exception while checking existing items in %s", folder)
+
+            try:
+                have_ids = self._W.check_folder_for_message_ids(folder, [item.message_id for item in items])
+            except:
+                l.exception("Second exception while checking existing items in %s; skipping.", folder)
+                return []
         want_items = []
         for item in items:
             if not (item.message_id.encode('utf-8') in have_ids):
