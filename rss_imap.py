@@ -53,7 +53,7 @@ def rss_item_to_email(item, feed):
         if 'summary' in item:
             text = text + "<br>" + item.summary
         email = MIMEText(text, "html")
-        email['Subject'] = config.subject_template.format(name=feed.Name, subject=strip_html(item.title))
+        email['Subject'] = feed.format_subject(subject=strip_html(item.title))
         email['From'] = item.get('author', '(Author Not Provided)')
         email['Message-Id'] = item_message_id(feed, item)
         if 'published' in item:
@@ -88,13 +88,22 @@ class FeedItem:
 
 
 class FeedConfig:
-    def __init__(self, dat):
+    def __init__(self, dat, *parent_configs):
+        def _extract_setting(name):
+            for obj in [dat, *parent_configs]:
+                if name in obj:
+                    return obj[name]
+            raise IndexError(f'Cannot find config value for {name}')
         self.Name = dat['Name']
         self.URL = dat['URL']
+        self.folder_template = _extract_setting('FolderTemplate')
+        self.subject_template = _extract_setting('SubjectTemplate')
     def __repr__(self):
-        return ("{ Folder: %s; URL: %s }" % (self.Name, self.URL))
+        return ("{ Name: %s; URL: %s; Folder: %s; Subject: %s }" % (self.Name, self.URL, self.folder_template, self.subject_template))
     def quoted_folder(self):
-        return config.feed_folder_template.format(name=self.Name)
+        return self.folder_template.format(name=self.Name)
+    def format_subject(self, subject):
+        return self.subject_template.format(name=self.Name, subject=subject)
 
 
 def fetch_feed_items(feed):
@@ -110,24 +119,29 @@ def fetch_feed_items(feed):
 def parse_configs(configs):
     l = logging.getLogger(__name__)
     feed_configs = []
-    app_config = None
+    app_config = {'FolderTemplate': config.feed_folder_template, 'SubjectTemplate': config.subject_template}
     for dat in configs:
+        parent_config = app_config
         l.debug("Config data: %s", dat)
         for item in filter(lambda p: p != None, yaml.safe_load_all(dat)):
-            if 'Configuration' in item:
+            if 'Configuration' in item and 'Items' not in item:
                 l.debug("Config item: %s", dat)
-                app_config = item['Configuration']
+                parent_config = item['Configuration']
+            elif 'Configuration' in item and 'Items' in item:
+                parent = item['Configuration']
+                for feed in item['Items']:
+                    feed_configs.append(FeedConfig(feed, parent, parent_config))
+            elif 'Items' in item:
+                for feed in item['Items']:
+                    feed_configs.append(FeedConfig(feed, parent_config))
             else:
-                feed_configs.append(FeedConfig(item))
+                feed_configs.append(FeedConfig(item, parent_config))
     # Figure out a better place to put this...
     def approx_item(dict, key):
         m = list(filter(lambda k: re.search('( |^)' + key + '$', k), dict.keys()))
         if m:
             return dict[m[0]]
         return None
-    if app_config:
-        config.feed_folder_template = approx_item(app_config, 'FolderTemplate') or config.feed_folder_template #app_config['FolderTemplate']
-        config.subject_template = approx_item(app_config, 'SubjectTemplate') or config.subject_template #app_config['SubjectTemplate']
     return feed_configs
 
 class RssIMAP:
