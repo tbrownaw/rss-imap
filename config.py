@@ -8,8 +8,8 @@ password = os.environ.get('IMAP_PASS')
 # Configuration:
 #   FolderTemplate: 'template with {name}'
 #   SubjectTemplate: 'template with {name} and {subject}'
-feed_folder_template = os.environ.get('FEED_FOLDER_TEMPLATE')
-subject_template = os.environ.get('FEED_ITEM_SUBJECT_TEMPLATE')
+feed_folder_template = os.environ.get('FEED_FOLDER_TEMPLATE') or 'RSS Feeds/{name}'
+subject_template = os.environ.get('FEED_ITEM_SUBJECT_TEMPLATE') or '{subject}'
 
 if not hostname:
     raise Exception('No host name defined.')
