@@ -136,12 +136,6 @@ def parse_configs(configs):
                     feed_configs.append(FeedConfig(feed, parent_config))
             else:
                 feed_configs.append(FeedConfig(item, parent_config))
-    # Figure out a better place to put this...
-    def approx_item(dict, key):
-        m = list(filter(lambda k: re.search('( |^)' + key + '$', k), dict.keys()))
-        if m:
-            return dict[m[0]]
-        return None
     return feed_configs
 
 class RssIMAP:
