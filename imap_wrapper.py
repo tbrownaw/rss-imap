@@ -32,9 +32,11 @@ class ImapWrapper:
 
     def ensure_folder(self, name):
         """Return True if the folder was created, False if it already existed."""
+        l = logging.getLogger(__name__)
         search_name = name[:-1] if name.endswith('/') else name
         if not any(n == search_name for n in self.folder_list):
-            typ, dtl = self.M.create_folder(name)
+            rslt = self.M.create_folder(name)
+            l.info(f"Folder create result: {rslt}")
             if typ != "OK":
                 raise IMAPError("Could not create folder: %s" % dtl)
             self.folder_list.append(search_name)
