@@ -37,8 +37,6 @@ class ImapWrapper:
         if not any(n == search_name for n in self.folder_list):
             rslt = self.M.create_folder(name)
             l.info(f"Folder create result: {rslt}")
-            if typ != "OK":
-                raise IMAPError("Could not create folder: %s" % dtl)
             self.folder_list.append(search_name)
             return True
         else:
