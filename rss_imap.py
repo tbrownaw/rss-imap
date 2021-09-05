@@ -149,7 +149,7 @@ class RssIMAP:
     def config_data_from_imap(self):
         # Don't be lazy about this.
         ret = []
-        for msg in self._W.fetch_messages('.config', 'SUBJECT', 'rss-imap', 'NOT', 'DELETED'):
+        for msg in self._W.fetch_messages(config.config_mailbox, 'SUBJECT', 'rss-imap', 'NOT', 'DELETED'):
             if msg.is_multipart():
                 for part in msg.get_payload():
                     name = part.get_param('Name', '(none)')
