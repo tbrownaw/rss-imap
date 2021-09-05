@@ -4,6 +4,8 @@ hostname = os.environ.get('IMAP_HOST')
 username = os.environ.get('IMAP_USER')
 password = os.environ.get('IMAP_PASS')
 
+config_mailbox = os.environ.get('CONFIG_MAILBOX') or '.config'
+
 # Can be overridden by:
 # Configuration:
 #   FolderTemplate: 'template with {name}'
