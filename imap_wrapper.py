@@ -16,8 +16,9 @@ class ImapWrapper:
     # quoted delimiter
     # possible-quoted folder name
     list_matcher = re.compile(r'^\(([^()]*)\) "([^"]*)" (([^" ]+)|"([^"]*)")$')
-    def __init__(self, host, user, pw):
-        self.M = IMAPClient(host)
+    def __init__(self, host, user, pw, **kwargs):
+        """kwargs: Paassed through to IMAPClient"""
+        self.M = IMAPClient(host, **kwargs)
         self.M.login(user, pw)
         self._selected_folder = None
         self._update_folders()
