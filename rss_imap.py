@@ -144,7 +144,7 @@ class RssIMAP:
 
     def connect_imap(self, hostname, username, password, **kwargs):
         self._W = ImapWrapper(hostname, username, password, **kwargs)
-        self._W.ensure_folder('.config')
+        self._W.ensure_folder(config.config_mailbox)
 
     def config_data_from_imap(self):
         # Don't be lazy about this.
