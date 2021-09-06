@@ -19,4 +19,5 @@ jobs:
         IMAP_HOST: imap
         IMAP_USER: debug@localdomain.test
         IMAP_PASS: debug
+        DEBUG_IMAP_NO_SSL: true
         CONFIG_MAILBOX: '_config'

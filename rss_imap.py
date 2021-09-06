@@ -1,3 +1,4 @@
+from typing import List
 import config
 
 import datetime
@@ -118,7 +119,7 @@ def fetch_feed_items(feed):
 
 def parse_configs(configs):
     l = logging.getLogger(__name__)
-    feed_configs = []
+    feed_configs : List[FeedConfig] = []
     app_config = {'FolderTemplate': config.feed_folder_template, 'SubjectTemplate': config.subject_template}
     for dat in configs:
         parent_config = app_config
