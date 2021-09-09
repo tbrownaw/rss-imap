@@ -6,7 +6,7 @@ import rss_imap
 config.configure_logging()
 
 x = rss_imap.RssIMAP()
-x.connect_imap(config.hostname, config.username, config.password)
+x.connect_imap(config.hostname, config.username, config.password, ssl=not config.debug_no_imap_ssl)
 
 feeds = x.get_feed_config_from_imap()
 #x.save_items_to_imap(x.filter_items(x.fetch_all_feed_items()))
@@ -18,6 +18,7 @@ for feed in feeds:
 
 #####
 print("\n##########\n")
+result = ""
 for feed in rss_imap.parse_configs(["""
 Configuration:
   FolderTemplate: 'BaseFolderTemplate'
@@ -48,4 +49,14 @@ Items:
 Name: Separate
 URL: https://separate
 """]):
-    pprint.pprint(feed)
+    result += str(feed) + "\n"
+
+expected = """{ Name: Foo; URL: https://foo; Folder: BaseFolderTemplate; Subject: BaseSubjectTemplate }
+{ Name: Bar; URL: https://bar; Folder: Folder{template}; Subject: Subject For {name} }
+{ Name: FooThree; URL: https://FooThree; Folder: TTT; Subject: SSS }
+{ Name: FooTwo; URL: https://FooTwo; Folder: FolderTemplateTwo; Subject: SubjectTemplateTwo }
+{ Name: Separate; URL: https://separate; Folder: RSS Feeds/{name}; Subject: {subject} }
+"""
+
+if result != expected:
+  exit(1)

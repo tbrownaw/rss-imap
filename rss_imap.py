@@ -1,3 +1,4 @@
+from typing import List
 import config
 
 import datetime
@@ -118,7 +119,7 @@ def fetch_feed_items(feed):
 
 def parse_configs(configs):
     l = logging.getLogger(__name__)
-    feed_configs = []
+    feed_configs : List[FeedConfig] = []
     app_config = {'FolderTemplate': config.feed_folder_template, 'SubjectTemplate': config.subject_template}
     for dat in configs:
         parent_config = app_config
@@ -142,14 +143,14 @@ class RssIMAP:
     def __init__(self):
         pass
 
-    def connect_imap(self, hostname, username, password):
-        self._W = ImapWrapper(hostname, username, password)
-        self._W.ensure_folder('.config')
+    def connect_imap(self, hostname, username, password, **kwargs):
+        self._W = ImapWrapper(hostname, username, password, **kwargs)
+        self._W.ensure_folder(config.config_mailbox)
 
     def config_data_from_imap(self):
         # Don't be lazy about this.
         ret = []
-        for msg in self._W.fetch_messages('.config', 'SUBJECT', 'rss-imap', 'NOT', 'DELETED'):
+        for msg in self._W.fetch_messages(config.config_mailbox, 'SUBJECT', 'rss-imap', 'NOT', 'DELETED'):
             if msg.is_multipart():
                 for part in msg.get_payload():
                     name = part.get_param('Name', '(none)')

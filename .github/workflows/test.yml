@@ -1,0 +1,23 @@
+name: Run Tests
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      imap:
+        image: virtuasa/docker-mail-devel
+        ports:
+        - 993:993
+        - 143:143
+        # options: --entrypoint ...
+    container:
+      image: python:3.9-slim
+    steps:
+    - uses: actions/checkout@v2
+    - run: ./test.sh
+      env:
+        IMAP_HOST: imap
+        IMAP_USER: debug@localdomain.test
+        IMAP_PASS: debug
+        DEBUG_IMAP_NO_SSL: true
+        CONFIG_MAILBOX: '_config'

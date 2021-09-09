@@ -4,6 +4,11 @@ hostname = os.environ.get('IMAP_HOST')
 username = os.environ.get('IMAP_USER')
 password = os.environ.get('IMAP_PASS')
 
+config_mailbox = os.environ.get('CONFIG_MAILBOX') or '.config'
+
+# Only the test entrypoint even looks at this.
+debug_no_imap_ssl = os.environ.get('DEBUG_IMAP_NO_SSL') == 'true'
+
 # Can be overridden by:
 # Configuration:
 #   FolderTemplate: 'template with {name}'

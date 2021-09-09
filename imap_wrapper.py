@@ -16,8 +16,9 @@ class ImapWrapper:
     # quoted delimiter
     # possible-quoted folder name
     list_matcher = re.compile(r'^\(([^()]*)\) "([^"]*)" (([^" ]+)|"([^"]*)")$')
-    def __init__(self, host, user, pw):
-        self.M = IMAPClient(host)
+    def __init__(self, host, user, pw, **kwargs):
+        """kwargs: Paassed through to IMAPClient"""
+        self.M = IMAPClient(host, **kwargs)
         self.M.login(user, pw)
         self._selected_folder = None
         self._update_folders()
@@ -31,11 +32,11 @@ class ImapWrapper:
 
     def ensure_folder(self, name):
         """Return True if the folder was created, False if it already existed."""
+        l = logging.getLogger(__name__)
         search_name = name[:-1] if name.endswith('/') else name
         if not any(n == search_name for n in self.folder_list):
-            typ, dtl = self.M.create_folder(name)
-            if typ != "OK":
-                raise IMAPError("Could not create folder: %s" % dtl)
+            rslt = self.M.create_folder(name)
+            l.info(f"Folder create result: {rslt}")
             self.folder_list.append(search_name)
             return True
         else:
