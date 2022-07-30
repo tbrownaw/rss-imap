@@ -29,6 +29,8 @@ def item_message_id(feed, item):
     if not msgid:
         msgid = feed.Name + " / " + item.title + " AT " + item.get('date', 'No date')
     msgid = msgid.replace(' ', '_')
+    msgid = msgid.replace('(', '_')
+    msgid = msgid.replace(')', '_')
     msgid = re.sub('[^\x00-\x7f]', '_', msgid)
     return msgid
 
