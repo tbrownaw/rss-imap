@@ -25,11 +25,11 @@ class TranslationException(Exception):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-def item_message_id(feed, item):
+def item_message_id(feed, item :dict):
     try:
         msgid = item.get('id', item.link)
     except:
-        pass
+        msgid = None
     if not msgid:
         msgid = feed.Name + " / " + item.title + " AT " + item.get('date', 'No date')
     msgid = msgid.replace(' ', '_')
@@ -115,10 +115,10 @@ class FeedConfig:
         return self.subject_template.format(name=self.Name, subject=subject)
 
 
-def fetch_feed_items(feed):
+def fetch_feed_items(feed :FeedConfig):
     l = logging.getLogger(__name__)
     l.info("Fetching feed %s", feed.URL)
-    content = feedparser.parse(feed.URL)
+    content :feedparser.FeedParserDict = feedparser.parse(feed.URL)
     l.info("Done fetching feed %s", feed.URL)
     if content.bozo:
         l.warning("Feed %s had bozo set for '%s'", feed.URL, content.bozo_exception)
@@ -216,7 +216,7 @@ if __name__ == '__main__':
     feeds = x.get_feed_config_from_imap()
     todo = queue.Queue()
     producer_threads = []
-    def producer(feed):
+    def producer(feed :FeedConfig):
         l = logging.getLogger(__name__)
         items = list(fetch_feed_items(feed))
         if len(items) > 0:
