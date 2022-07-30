@@ -26,7 +26,10 @@ class TranslationException(Exception):
         super().__init__(*args, **kwargs)
 
 def item_message_id(feed, item):
-    msgid = item.get('id', item.link)
+    try:
+        msgid = item.get('id', item.link)
+    except:
+        pass
     if not msgid:
         msgid = feed.Name + " / " + item.title + " AT " + item.get('date', 'No date')
     msgid = msgid.replace(' ', '_')
