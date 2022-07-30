@@ -52,7 +52,10 @@ def rss_item_to_email(item, feed):
         ts.close()
         return ts.result()
     try:
-        text = '<p>Item Link: <a href="%s">%s</a></p>' % (item.link, item.link)
+        try:
+            text = '<p>Item Link: <a href="%s">%s</a></p>' % (item.link, item.link)
+        except:
+            text = '<p>(no link found)</p>'
         if 'summary' in item:
             text = text + "<br>" + item.summary
         email = MIMEText(text, "html")
