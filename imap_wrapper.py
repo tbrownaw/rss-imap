@@ -70,7 +70,7 @@ class ImapWrapper:
                 envelope = msgdata[b'ENVELOPE']
                 have_ids.append(envelope.message_id)
             except Exception as e:
-                logging.getLogger(__name__).error("Error looking up existing message ID: %s", e, exc_info=1)
+                logging.getLogger(__name__).error("Error looking up existing message ID: %s : %s", e, msgdata, exc_info=1)
         return have_ids
 
     def append(self, folder_name, email):
